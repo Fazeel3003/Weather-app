@@ -15,7 +15,6 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
-    /* background: url('https://source.unsplash.com/1600x900/?weather') no-repeat center center fixed; background-size: cover; */
 }
 
 h1 {
@@ -90,8 +89,11 @@ button:disabled {
 }
 
 .error {
-    color: #ff7675;  /* Red for errors */
+    color: #ff7675;
     font-weight: bold;
+    /* background: rgba(255, 0, 0, 0.1); */
+    padding: 8px;
+    border-radius: 5px;
 }
 
 /* Responsive design */
