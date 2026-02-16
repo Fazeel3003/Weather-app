@@ -13,7 +13,7 @@ async function getWeather() {
     weatherDiv.innerHTML = '<div class="loading"></div> Fetching weather...';
     button.disabled = true;  // Prevent multiple clicks
     
-    const apiKey = '90ab32f01c4553d11a994c43bed412c2';
+    const apiKey = '';
     const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
     
     try {
