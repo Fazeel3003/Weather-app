@@ -7,7 +7,7 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;  /* Modern font */
-    background: linear-gradient(135deg, #74b9ff, #0984e3);  /* Blue gradient background */
+    background: linear-gradient(135deg, #74b9ff, #0984e3);  
     color: #fff;
     min-height: 100vh;
     display: flex;
@@ -15,6 +15,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
+    /* background: url('https://source.unsplash.com/1600x900/?weather') no-repeat center center fixed; background-size: cover; */
 }
 
 h1 {
