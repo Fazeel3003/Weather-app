@@ -1,3 +1,51 @@
+// Recent Searches Management
+const MAX_RECENT_SEARCHES = 5;
+
+function getRecentSearches() {
+    const searches = localStorage.getItem('recentWeatherSearches');
+    return searches ? JSON.parse(searches) : [];
+}
+
+function saveRecentSearch(city) {
+    let recentSearches = getRecentSearches();
+    
+    // Remove if already exists
+    recentSearches = recentSearches.filter(search => search.toLowerCase() !== city.toLowerCase());
+    
+    // Add to beginning
+    recentSearches.unshift(city);
+    
+    // Keep only the most recent searches
+    recentSearches = recentSearches.slice(0, MAX_RECENT_SEARCHES);
+    
+    localStorage.setItem('recentWeatherSearches', JSON.stringify(recentSearches));
+    displayRecentSearches();
+}
+
+function displayRecentSearches() {
+    const recentSearchesDiv = document.getElementById('recentSearches');
+    const recentSearches = getRecentSearches();
+    
+    if (recentSearches.length === 0) {
+        recentSearchesDiv.innerHTML = '';
+        return;
+    }
+    
+    let html = '<div class="recent-searches-container"><h4>🕐 Recent Searches</h4><div class="recent-searches-list">';
+    
+    recentSearches.forEach(city => {
+        html += `<button class="recent-search-item" onclick="selectRecentSearch('${city}')">${city}</button>`;
+    });
+    
+    html += '</div></div>';
+    recentSearchesDiv.innerHTML = html;
+}
+
+function selectRecentSearch(city) {
+    document.getElementById('cityInput').value = city;
+    getWeather();
+}
+
 // Function to handle Enter key press
 function handleKeyPress(event) {
     if (event.key === 'Enter') {
@@ -34,7 +82,7 @@ async function getWeather() {
     metricsDiv.innerHTML = '';
     button.disabled = true;
     
-    const apiKey = '';  
+    const apiKey = '9ff74386fc4529d7a1d8cf6f4a3e5062';  
     
     try {
         // Step 1: Get coordinates from city name
@@ -59,6 +107,9 @@ async function getWeather() {
         
         // Display Current Weather
         displayCurrentWeather(currentWeatherData, name, country, weatherDiv);
+        
+        // Save to recent searches
+        saveRecentSearch(city);
         
         // Display Air Quality Data (NEW!)
         displayAirQuality(airQualityData, aqDiv);
@@ -246,3 +297,8 @@ function getWeatherIcon(description) {
     if (lowerDesc.includes('mist') || lowerDesc.includes('fog')) return '🌫️';
     return '🌤️';
 }
+
+// Initialize recent searches on page load
+document.addEventListener('DOMContentLoaded', function() {
+    displayRecentSearches();
+});
