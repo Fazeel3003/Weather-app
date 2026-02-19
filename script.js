@@ -1,28 +1,50 @@
 // Constants
 const MAX_RECENT_SEARCHES = 5;
-const API_KEY = '9ff74386fc4529d7a1d8cf6f4a3e5062';
+const API_KEY = '';
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 const AUTOCOMPLETE_LIMIT = 10;
+const SEARCH_DEBOUNCE = 400; // ms
 
-// City Cache Management
+// Enhanced City Cache Management with Axios
 let cityCache = new Map();
 let popularCitiesCache = [];
+let searchController = null; // For canceling pending requests
+let currentSearchRequest = null;
 
-// Initialize popular cities cache
+// Axios instance with professional configuration
+const weatherAPI = axios.create({
+    baseURL: 'https://api.openweathermap.org/geo/1.0',
+    timeout: 5000,
+    headers: {
+        'Content-Type': 'application/json'
+    }
+});
+
+// Professional search state management
+const searchState = {
+    isSearching: false,
+    currentQuery: '',
+    searchHistory: new Set(),
+    lastSearchTime: 0,
+    searchCount: 0
+};
+
+// Initialize popular cities cache (optimized with Axios)
 async function initializePopularCities() {
     const cached = localStorage.getItem('popularCitiesCache');
     const cacheTime = localStorage.getItem('popularCitiesCacheTime');
     
     if (cached && cacheTime && (Date.now() - parseInt(cacheTime)) < CACHE_DURATION) {
         popularCitiesCache = JSON.parse(cached);
-        console.log('Loaded popular cities from cache');
-    } else {
-        await fetchPopularCities();
+        console.log('✅ Loaded popular cities from cache');
+        return;
     }
+    
+    await fetchPopularCitiesWithAxios();
 }
 
-// Fetch popular cities from API (sample major cities)
-async function fetchPopularCities() {
+// Enhanced popular cities fetch with Axios
+async function fetchPopularCitiesWithAxios() {
     const majorCities = [
         'London,GB', 'Paris,FR', 'Berlin,DE', 'Madrid,ES', 'Rome,IT',
         'New York,US', 'Los Angeles,US', 'Chicago,US', 'Houston,US', 'Phoenix,US',
@@ -31,51 +53,69 @@ async function fetchPopularCities() {
     ];
     
     try {
-        const cityPromises = majorCities.map(city => getCityCoordinates(city));
-        const results = await Promise.all(cityPromises);
+        console.log('🔄 Fetching popular cities with Axios...');
         
-        popularCitiesCache = results
-            .filter(city => city !== null)
-            .map(city => city.name)
+        // Use axios.all for parallel requests
+        const requests = majorCities.map(city => 
+            weatherAPI.get('/direct', {
+                params: {
+                    q: city,
+                    limit: 1,
+                    appid: API_KEY
+                }
+            })
+        );
+        
+        const responses = await axios.all(requests);
+        
+        popularCitiesCache = responses
+            .filter(response => response.data && response.data.length > 0)
+            .map(response => response.data[0].name)
             .sort();
         
         // Cache the results
         localStorage.setItem('popularCitiesCache', JSON.stringify(popularCitiesCache));
         localStorage.setItem('popularCitiesCacheTime', Date.now().toString());
-        console.log('Fetched and cached popular cities');
+        
+        console.log(`✅ Fetched ${popularCitiesCache.length} popular cities`);
+        
     } catch (error) {
-        console.error('Error fetching popular cities:', error);
+        console.error('❌ Error fetching popular cities:', error.message);
         // Fallback to basic list
         popularCitiesCache = ['London', 'Paris', 'New York', 'Tokyo', 'Sydney'];
     }
 }
 
-// Get city coordinates with caching
+// Enhanced city coordinates with Axios and better caching
 async function getCityCoordinates(cityQuery) {
-    // Check cache first
     const cacheKey = cityQuery.toLowerCase();
+    
+    // Check memory cache first
     if (cityCache.has(cacheKey)) {
         const cached = cityCache.get(cacheKey);
         if (Date.now() - cached.timestamp < CACHE_DURATION) {
+            console.log(`✅ Using cached coordinates for ${cityQuery}`);
             return cached.data;
         }
     }
     
     try {
-        const response = await fetch(
-            `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(cityQuery)}&limit=1&appid=${API_KEY}`
-        );
+        console.log(`🔍 Fetching coordinates for ${cityQuery}...`);
         
-        if (!response.ok) throw new Error('Geocoding failed');
+        const response = await weatherAPI.get('/direct', {
+            params: {
+                q: cityQuery,
+                limit: 1,
+                appid: API_KEY
+            }
+        });
         
-        const data = await response.json();
-        
-        if (data && data.length > 0) {
+        if (response.data && response.data.length > 0) {
             const result = {
-                name: data[0].name,
-                country: data[0].country,
-                lat: data[0].lat,
-                lon: data[0].lon
+                name: response.data[0].name,
+                country: response.data[0].country,
+                lat: response.data[0].lat,
+                lon: response.data[0].lon
             };
             
             // Cache the result
@@ -84,38 +124,64 @@ async function getCityCoordinates(cityQuery) {
                 timestamp: Date.now()
             });
             
+            console.log(`✅ Cached coordinates for ${cityQuery}`);
             return result;
         }
         
         return null;
+        
     } catch (error) {
-        console.error('Geocoding error:', error);
+        console.error(`❌ Geocoding error for ${cityQuery}:`, error.message);
         return null;
     }
 }
 
-// Search cities for autocomplete
+// Professional city search with Axios and advanced features
 async function searchCities(query) {
     if (!query || query.length < 2) return [];
+    
+    // Update search state
+    searchState.currentQuery = query;
+    searchState.isSearching = true;
     
     // Check cache first
     const cacheKey = `search_${query.toLowerCase()}`;
     if (cityCache.has(cacheKey)) {
         const cached = cityCache.get(cacheKey);
         if (Date.now() - cached.timestamp < CACHE_DURATION) {
+            console.log(`✅ Using cached search results for "${query}"`);
+            searchState.isSearching = false;
             return cached.data;
         }
     }
     
+    // Cancel previous request if still pending
+    if (searchController) {
+        searchController.abort();
+        console.log('⏹️ Canceled previous search request');
+    }
+    
+    // Create new AbortController for this request
+    searchController = new AbortController();
+    
     try {
-        const response = await fetch(
-            `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=${AUTOCOMPLETE_LIMIT}&appid=${API_KEY}`
-        );
+        console.log(`🔍 Searching cities for "${query}"...`);
         
-        if (!response.ok) throw new Error('Search failed');
+        const response = await weatherAPI.get('/direct', {
+            params: {
+                q: query,
+                limit: AUTOCOMPLETE_LIMIT,
+                appid: API_KEY
+            },
+            signal: searchController.signal
+        });
         
-        const data = await response.json();
-        const results = data.map(city => city.name);
+        const results = response.data.map(city => ({
+            name: city.name,
+            country: city.country,
+            state: city.state,
+            fullName: city.state ? `${city.name}, ${city.state}` : city.name
+        }));
         
         // Cache the search results
         cityCache.set(cacheKey, {
@@ -123,10 +189,26 @@ async function searchCities(query) {
             timestamp: Date.now()
         });
         
+        // Update search statistics
+        searchState.searchCount++;
+        searchState.lastSearchTime = Date.now();
+        searchState.searchHistory.add(query);
+        
+        console.log(`✅ Found ${results.length} cities for "${query}"`);
+        searchState.isSearching = false;
+        
         return results;
+        
     } catch (error) {
-        console.error('City search error:', error);
+        if (axios.isCancel(error)) {
+            console.log('⏹️ Search request was canceled');
+        } else {
+            console.error(`❌ City search error for "${query}":`, error.message);
+        }
+        searchState.isSearching = false;
         return [];
+    } finally {
+        searchController = null;
     }
 }
 
@@ -134,7 +216,7 @@ async function searchCities(query) {
 let currentFocus = -1;
 let autocompleteVisible = false;
 
-// Dynamic Autocomplete Functionality
+// Professional Autocomplete with Enhanced UI and Axios
 function autocomplete(inp) {
     let currentFocus = -1;
     let searchTimeout;
@@ -143,57 +225,148 @@ function autocomplete(inp) {
         const val = this.value.trim();
         closeAllLists();
         
-        if (!val || val.length < 2) {
+        if (val.length < 2) {
             return false;
         }
         
-        // Debounce search to avoid excessive API calls
+        // Enhanced debounce with visual feedback
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(async () => {
-            const cities = await searchCities(val);
-            if (cities.length > 0) {
-                displayAutocompleteResults(cities, inp, val);
+            try {
+                const cities = await searchCities(val);
+                
+                if (cities.length > 0) {
+                    displayEnhancedAutocompleteResults(cities, inp, val);
+                } else {
+                    displayNoResults(inp, val);
+                }
+            } catch (error) {
+                displaySearchError(inp, error.message);
             }
-        }, 300);
+        }, SEARCH_DEBOUNCE);
     });
     
+    // Enhanced keyboard navigation
     inp.addEventListener("keydown", function(e) {
         let x = document.getElementById(this.id + "autocomplete-list");
         if (x) x = x.getElementsByTagName("div");
-        if (e.keyCode == 40) {
+        
+        if (e.keyCode == 40) { // Down arrow
+            e.preventDefault();
             currentFocus++;
             addActive(x);
-        } else if (e.keyCode == 38) { //up
+        } else if (e.keyCode == 38) { // Up arrow
+            e.preventDefault();
             currentFocus--;
             addActive(x);
-        } else if (e.keyCode == 13) {
+        } else if (e.keyCode == 13) { // Enter
             e.preventDefault();
-            if (currentFocus > -1) {
-                if (x) x[currentFocus].click();
+            if (currentFocus > -1 && x) {
+                x[currentFocus].click();
+            } else {
+                // Trigger search if no item selected
+                getWeather();
             }
+        } else if (e.keyCode == 27) { // Escape
+            closeAllLists();
         }
     });
     
-    function displayAutocompleteResults(cities, inp, query) {
-        let a = document.createElement("DIV");
-        a.setAttribute("id", inp.id + "autocomplete-list");
-        a.setAttribute("class", "autocomplete-items");
-        inp.parentNode.appendChild(a);
+    function displayEnhancedAutocompleteResults(cities, inp, query) {
+        closeAllLists();
         
-        cities.forEach(city => {
-            const b = document.createElement("DIV");
-            const highlightedCity = city.replace(
-                new RegExp(query, "gi"), 
-                match => `<strong>${match}</strong>`
+        const autocompleteList = document.createElement("DIV");
+        autocompleteList.setAttribute("id", inp.id + "autocomplete-list");
+        autocompleteList.setAttribute("class", "autocomplete-items enhanced");
+        
+        // Add header with search info
+        const header = document.createElement("DIV");
+        header.className = "autocomplete-header";
+        header.innerHTML = `
+            <span class="search-info">🔍 Found ${cities.length} cities for "${query}"</span>
+            <span class="search-tip">Use ↑↓ to navigate, Enter to select</span>
+        `;
+        autocompleteList.appendChild(header);
+        
+        // Add city results
+        cities.forEach((city, index) => {
+            const item = document.createElement("DIV");
+            item.className = "autocomplete-item";
+            
+            // Enhanced highlighting
+            const highlightedName = city.name.replace(
+                new RegExp(`(${query})`, "gi"), 
+                match => `<strong class="highlight">${match}</strong>`
             );
-            b.innerHTML = highlightedCity;
-            b.innerHTML += `<input type='hidden' value='${city}'>`;
-            b.addEventListener("click", function(e) {
+            
+            const displayName = city.state ? `${city.name}, ${city.state}` : city.name;
+            
+            item.innerHTML = `
+                <div class="city-info">
+                    <span class="city-name">${highlightedName}</span>
+                    <span class="city-country">${city.country}</span>
+                </div>
+            `;
+            item.innerHTML += `<input type='hidden' value='${city.name}'>`;
+            
+            // Enhanced click handling
+            item.addEventListener("click", function(e) {
+                e.preventDefault();
                 inp.value = this.getElementsByTagName("input")[0].value;
                 closeAllLists();
+                // Trigger weather search immediately
+                getWeather();
             });
-            a.appendChild(b);
+            
+            // Hover effects
+            item.addEventListener("mouseenter", function() {
+                removeActive(x);
+                this.classList.add("autocomplete-active");
+                currentFocus = index;
+            });
+            
+            autocompleteList.appendChild(item);
         });
+        
+        inp.parentNode.appendChild(autocompleteList);
+    }
+    
+    function displayNoResults(inp, query) {
+        closeAllLists();
+        
+        const autocompleteList = document.createElement("DIV");
+        autocompleteList.setAttribute("id", inp.id + "autocomplete-list");
+        autocompleteList.setAttribute("class", "autocomplete-items enhanced");
+        
+        const noResults = document.createElement("DIV");
+        noResults.className = "autocomplete-no-results";
+        noResults.innerHTML = `
+            <div class="no-results-icon">🌍</div>
+            <div class="no-results-text">No cities found for "${query}"</div>
+            <div class="no-results-tip">Try a different spelling or add country code</div>
+        `;
+        
+        autocompleteList.appendChild(noResults);
+        inp.parentNode.appendChild(autocompleteList);
+    }
+    
+    function displaySearchError(inp, errorMessage) {
+        closeAllLists();
+        
+        const autocompleteList = document.createElement("DIV");
+        autocompleteList.setAttribute("id", inp.id + "autocomplete-list");
+        autocompleteList.setAttribute("class", "autocomplete-items enhanced");
+        
+        const errorItem = document.createElement("DIV");
+        errorItem.className = "autocomplete-error";
+        errorItem.innerHTML = `
+            <div class="error-icon">⚠️</div>
+            <div class="error-text">Search temporarily unavailable</div>
+            <div class="error-tip">Please try again in a moment</div>
+        `;
+        
+        autocompleteList.appendChild(errorItem);
+        inp.parentNode.appendChild(autocompleteList);
     }
     
     function addActive(x) {
@@ -202,6 +375,9 @@ function autocomplete(inp) {
         if (currentFocus >= x.length) currentFocus = 0;
         if (currentFocus < 0) currentFocus = (x.length - 1);
         x[currentFocus].classList.add("autocomplete-active");
+        
+        // Scroll into view if needed
+        x[currentFocus].scrollIntoView({ block: 'nearest' });
     }
     
     function removeActive(x) {
@@ -219,8 +395,18 @@ function autocomplete(inp) {
         }
     }
     
+    // Close on outside click
     document.addEventListener("click", function (e) {
-        closeAllLists(e.target);
+        if (e.target !== inp) {
+            closeAllLists(e.target);
+        }
+    });
+    
+    // Close on blur
+    inp.addEventListener("blur", function() {
+        setTimeout(() => {
+            closeAllLists();
+        }, 200);
     });
 }
 
@@ -531,25 +717,19 @@ function setWeatherBackground(description, mainWeather) {
     // Remove all existing weather classes
     body.className = body.className.replace(/weather-\w+/g, '').trim();
     
-    // Add weather-specific class for animations
+    // Add weather-specific class for background changes only
     if (lowerDesc.includes('clear') || lowerDesc.includes('sunny')) {
         body.classList.add('weather-sunny');
-        createWeatherParticles('sun');
     } else if (lowerDesc.includes('rain') || lowerDesc.includes('drizzle')) {
         body.classList.add('weather-rainy');
-        createWeatherParticles('rain');
     } else if (lowerDesc.includes('snow')) {
         body.classList.add('weather-snowy');
-        createWeatherParticles('snow');
     } else if (lowerDesc.includes('thunder') || lowerDesc.includes('storm')) {
         body.classList.add('weather-stormy');
-        createWeatherParticles('storm');
     } else if (lowerDesc.includes('cloud')) {
         body.classList.add('weather-cloudy');
-        createWeatherParticles('cloud');
     } else if (lowerDesc.includes('mist') || lowerDesc.includes('fog')) {
         body.classList.add('weather-foggy');
-        createWeatherParticles('fog');
     } else {
         body.classList.add('weather-default');
     }
@@ -571,10 +751,6 @@ function createWeatherParticles(type) {
         particleCount = 30;
         createSnowEffect();
         return;
-    } else if (type === 'sun') {
-        particleCount = 20;
-        createSunRays();
-        return;
     } else if (type === 'storm') {
         particleCount = 25;
         createStormEffect();
@@ -586,6 +762,7 @@ function createWeatherParticles(type) {
         createFogEffect();
         return;
     }
+    // Sun effect removed - no more sun visual on the right side
 }
 
 // CLOUD EFFECT - Replace emoji clouds
