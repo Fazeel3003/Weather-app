@@ -220,20 +220,37 @@ let autocompleteVisible = false;
 function autocomplete(inp) {
     let currentFocus = -1;
     let searchTimeout;
+    let isSearching = false;
+    
+    // Add visual feedback for search state
+    const addSearchingClass = () => {
+        inp.classList.add('searching');
+        isSearching = true;
+    };
+    
+    const removeSearchingClass = () => {
+        inp.classList.remove('searching');
+        isSearching = false;
+    };
     
     inp.addEventListener("input", async function(e) {
         const val = this.value.trim();
         closeAllLists();
         
         if (val.length < 2) {
+            removeSearchingClass();
             return false;
         }
+        
+        // Add searching visual feedback
+        addSearchingClass();
         
         // Enhanced debounce with visual feedback
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(async () => {
             try {
                 const cities = await searchCities(val);
+                removeSearchingClass();
                 
                 if (cities.length > 0) {
                     displayEnhancedAutocompleteResults(cities, inp, val);
@@ -241,6 +258,7 @@ function autocomplete(inp) {
                     displayNoResults(inp, val);
                 }
             } catch (error) {
+                removeSearchingClass();
                 displaySearchError(inp, error.message);
             }
         }, SEARCH_DEBOUNCE);
@@ -249,26 +267,35 @@ function autocomplete(inp) {
     // Enhanced keyboard navigation
     inp.addEventListener("keydown", function(e) {
         let x = document.getElementById(this.id + "autocomplete-list");
-        if (x) x = x.getElementsByTagName("div");
+        if (x) {
+            // Get only the actual city items, not header or other elements
+            x = x.getElementsByClassName("autocomplete-item");
+        }
         
         if (e.keyCode == 40) { // Down arrow
             e.preventDefault();
+            // Prevent input text selection during navigation
+            this.setSelectionRange(this.value.length, this.value.length);
             currentFocus++;
             addActive(x);
         } else if (e.keyCode == 38) { // Up arrow
             e.preventDefault();
+            // Prevent input text selection during navigation
+            this.setSelectionRange(this.value.length, this.value.length);
             currentFocus--;
             addActive(x);
         } else if (e.keyCode == 13) { // Enter
             e.preventDefault();
-            if (currentFocus > -1 && x) {
+            if (currentFocus > -1 && x && x[currentFocus]) {
                 x[currentFocus].click();
             } else {
                 // Trigger search if no item selected
                 getWeather();
             }
         } else if (e.keyCode == 27) { // Escape
+            e.preventDefault();
             closeAllLists();
+            removeSearchingClass();
         }
     });
     
@@ -283,17 +310,17 @@ function autocomplete(inp) {
         const header = document.createElement("DIV");
         header.className = "autocomplete-header";
         header.innerHTML = `
-            <span class="search-info">🔍 Found ${cities.length} cities for "${query}"</span>
-            <span class="search-tip">Use ↑↓ to navigate, Enter to select</span>
+            <span class="search-info">🔍 Found ${cities.length} cities</span>
+            <span class="search-tip">↑↓ Navigate • Enter Select</span>
         `;
         autocompleteList.appendChild(header);
         
-        // Add city results
+        // Add city results with better visual hierarchy
         cities.forEach((city, index) => {
             const item = document.createElement("DIV");
             item.className = "autocomplete-item";
             
-            // Enhanced highlighting
+            // Enhanced highlighting with better visual feedback
             const highlightedName = city.name.replace(
                 new RegExp(`(${query})`, "gi"), 
                 match => `<strong class="highlight">${match}</strong>`
@@ -309,18 +336,24 @@ function autocomplete(inp) {
             `;
             item.innerHTML += `<input type='hidden' value='${city.name}'>`;
             
-            // Enhanced click handling
+            // Enhanced click handling with visual feedback
             item.addEventListener("click", function(e) {
                 e.preventDefault();
                 inp.value = this.getElementsByTagName("input")[0].value;
                 closeAllLists();
+                removeSearchingClass();
+                // Add selection feedback
+                inp.classList.add('selected');
+                setTimeout(() => inp.classList.remove('selected'), 300);
                 // Trigger weather search immediately
                 getWeather();
             });
             
-            // Hover effects
+            // Enhanced hover effects with smooth transitions
             item.addEventListener("mouseenter", function() {
-                removeActive(x);
+                // Get current autocomplete items to remove active class
+                const currentItems = document.getElementsByClassName("autocomplete-item");
+                removeActive(currentItems);
                 this.classList.add("autocomplete-active");
                 currentFocus = index;
             });
@@ -329,6 +362,12 @@ function autocomplete(inp) {
         });
         
         inp.parentNode.appendChild(autocompleteList);
+        
+        // Add smooth entrance animation
+        setTimeout(() => {
+            autocompleteList.style.opacity = '1';
+            autocompleteList.style.transform = 'translateY(0)';
+        }, 10);
     }
     
     function displayNoResults(inp, query) {
@@ -341,9 +380,9 @@ function autocomplete(inp) {
         const noResults = document.createElement("DIV");
         noResults.className = "autocomplete-no-results";
         noResults.innerHTML = `
-            <div class="no-results-icon">🌍</div>
+            <div class="no-results-icon">🔍</div>
             <div class="no-results-text">No cities found for "${query}"</div>
-            <div class="no-results-tip">Try a different spelling or add country code</div>
+            <div class="no-results-tip">Try different spelling or add country code</div>
         `;
         
         autocompleteList.appendChild(noResults);
@@ -376,8 +415,8 @@ function autocomplete(inp) {
         if (currentFocus < 0) currentFocus = (x.length - 1);
         x[currentFocus].classList.add("autocomplete-active");
         
-        // Scroll into view if needed
-        x[currentFocus].scrollIntoView({ block: 'nearest' });
+        // Smooth scroll into view
+        x[currentFocus].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
     
     function removeActive(x) {
@@ -395,18 +434,28 @@ function autocomplete(inp) {
         }
     }
     
-    // Close on outside click
+    // Close on outside click with better handling
     document.addEventListener("click", function (e) {
         if (e.target !== inp) {
             closeAllLists(e.target);
+            removeSearchingClass();
         }
     });
     
-    // Close on blur
+    // Close on blur with delay for better UX
     inp.addEventListener("blur", function() {
         setTimeout(() => {
             closeAllLists();
+            removeSearchingClass();
         }, 200);
+    });
+    
+    // Focus handling
+    inp.addEventListener("focus", function() {
+        if (this.value.trim().length >= 2 && !isSearching) {
+            // Re-trigger search if there's content
+            this.dispatchEvent(new Event('input'));
+        }
     });
 }
 
