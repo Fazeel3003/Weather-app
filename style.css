@@ -196,7 +196,7 @@ body.weather-foggy {
     top: 100%;
     left: 0;
     right: 0;
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
     background: white;
     border-radius: 0 0 8px 8px;
@@ -205,6 +205,25 @@ body.weather-foggy {
     opacity: 0;
     transform: translateY(-10px);
     transition: all 0.3s ease;
+}
+
+/* Enhanced scrollbar for professional look */
+.autocomplete-items::-webkit-scrollbar {
+    width: 8px;
+}
+
+.autocomplete-items::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.autocomplete-items::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+}
+
+.autocomplete-items::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
 }
 
 .autocomplete-items.enhanced {
@@ -286,6 +305,13 @@ body.weather-foggy {
     background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
     padding: 2px 4px;
     border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.autocomplete-active .city-name .highlight {
+    color: white !important;
+    background: rgba(255, 255, 255, 0.2) !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .city-country {

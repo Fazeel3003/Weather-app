@@ -2,7 +2,7 @@
 const MAX_RECENT_SEARCHES = 5;
 const API_KEY = '';
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-const AUTOCOMPLETE_LIMIT = 10;
+const AUTOCOMPLETE_LIMIT = 50; // Increased to get more results
 const SEARCH_DEBOUNCE = 400; // ms
 
 // Enhanced City Cache Management with Axios
@@ -151,7 +151,7 @@ async function searchCities(query) {
         if (Date.now() - cached.timestamp < CACHE_DURATION) {
             console.log(`✅ Using cached search results for "${query}"`);
             searchState.isSearching = false;
-            return cached.data;
+            return cached.data; // Return all cached cities as-is
         }
     }
     
@@ -176,12 +176,17 @@ async function searchCities(query) {
             signal: searchController.signal
         });
         
-        const results = response.data.map(city => ({
-            name: city.name,
-            country: city.country,
-            state: city.state,
-            fullName: city.state ? `${city.name}, ${city.state}` : city.name
-        }));
+        const results = response.data
+            .map(city => ({
+                name: city.name,
+                country: city.country,
+                state: city.state,
+                fullName: city.state ? `${city.name}, ${city.state}` : city.name
+            }))
+            .slice(0, AUTOCOMPLETE_LIMIT); // Show all cities up to our limit
+        
+        console.log(`🔍 API returned ${response.data.length} cities for "${query}"`);
+        console.log(`🔍 Processed ${results.length} cities for display`);
         
         // Cache the search results
         cityCache.set(cacheKey, {
@@ -298,7 +303,7 @@ function autocomplete(inp) {
             removeSearchingClass();
         }
     });
-    
+            
     function displayEnhancedAutocompleteResults(cities, inp, query) {
         closeAllLists();
         
@@ -369,10 +374,11 @@ function autocomplete(inp) {
             autocompleteList.style.transform = 'translateY(0)';
         }, 10);
     }
-    
+            
     function displayNoResults(inp, query) {
         closeAllLists();
         
+                
         const autocompleteList = document.createElement("DIV");
         autocompleteList.setAttribute("id", inp.id + "autocomplete-list");
         autocompleteList.setAttribute("class", "autocomplete-items enhanced");
