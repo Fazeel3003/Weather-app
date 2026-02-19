@@ -2,7 +2,7 @@
 const MAX_RECENT_SEARCHES = 5;
 const API_KEY = '9ff74386fc4529d7a1d8cf6f4a3e5062';
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-const AUTOCOMPLETE_LIMIT = 50; // Increased to get more results
+const AUTOCOMPLETE_LIMIT = 50; // Increased to get more results but limited by API
 const SEARCH_DEBOUNCE = 400; // ms
 
 // Enhanced City Cache Management with Axios
@@ -165,6 +165,8 @@ async function searchCities(query) {
     searchController = new AbortController();
     
     try {
+        console.log(`🔍 Searching cities for "${query}"...`);
+        
         const response = await weatherAPI.get('/direct', {
             params: {
                 q: query,
@@ -179,9 +181,56 @@ async function searchCities(query) {
                 name: city.name,
                 country: city.country,
                 state: city.state,
-                fullName: city.state ? `${city.name}, ${city.state}` : city.name
+                fullName: city.state ? `${city.name}, ${city.state}` : city.name,
+                // Create a unique key for duplicate detection
+                uniqueKey: `${city.name.toLowerCase()}_${city.country}`
             }))
+            // Enhanced duplicate filtering
+            .filter((city, index, self) => {
+                // First, check exact duplicates (same name + same country)
+                const exactDuplicates = self.filter(c => 
+                    c.name.toLowerCase() === city.name.toLowerCase() && 
+                    c.country === city.country
+                );
+                
+                // If multiple entries with same name and country, keep the first one
+                if (exactDuplicates.length > 1) {
+                    const firstIndex = self.findIndex(c => 
+                        c.name.toLowerCase() === city.name.toLowerCase() && 
+                        c.country === city.country
+                    );
+                    return index === firstIndex;
+                }
+                
+                // Special handling for Pune and similar cities with different admin codes
+                // If city name is same and countries are similar (like IN, ID, TL for Pune), 
+                // treat as duplicates and keep the one with IN (primary country)
+                const sameNameCities = self.filter(c => 
+                    c.name.toLowerCase() === city.name.toLowerCase()
+                );
+                
+                if (sameNameCities.length > 1) {
+                    // For Pune, prefer IN (India) over other administrative codes
+                    if (city.name.toLowerCase() === 'pune') {
+                        const hasIN = sameNameCities.some(c => c.country === 'IN');
+                        if (hasIN) {
+                            return city.country === 'IN'; // Only keep Pune, IN
+                        }
+                    }
+                    
+                    // For other cities, prefer the first occurrence
+                    const firstSameNameIndex = self.findIndex(c => 
+                        c.name.toLowerCase() === city.name.toLowerCase()
+                    );
+                    return index === firstSameNameIndex;
+                }
+                
+                return true; // Unique city, keep it
+            })
             .slice(0, AUTOCOMPLETE_LIMIT); // Show all cities up to our limit
+        
+        console.log(`🔍 API returned ${response.data.length} cities for "${query}"`);
+        console.log(`🔍 Processed ${results.length} cities for display`);
         
         // Cache the search results
         cityCache.set(cacheKey, {
@@ -194,6 +243,7 @@ async function searchCities(query) {
         searchState.lastSearchTime = Date.now();
         searchState.searchHistory.add(query);
         
+        console.log(`✅ Found ${results.length} cities for "${query}"`);
         searchState.isSearching = false;
         
         return results;
@@ -220,6 +270,7 @@ function autocomplete(inp) {
     let currentFocus = -1;
     let searchTimeout;
     let isSearching = false;
+    let previousLength = 0; // Track previous input length
     
     // Add visual feedback for search state
     const addSearchingClass = () => {
@@ -234,12 +285,24 @@ function autocomplete(inp) {
     
     inp.addEventListener("input", async function(e) {
         const val = this.value.trim();
+        const currentLength = val.length;
+        
         closeAllLists();
         
-        if (val.length < 2) {
+        if (val.length < 3) {
             removeSearchingClass();
+            previousLength = currentLength;
             return false;
         }
+        
+        // Only search if characters were added (not backspace)
+        if (currentLength < previousLength) {
+            removeSearchingClass();
+            previousLength = currentLength;
+            return false;
+        }
+        
+        previousLength = currentLength;
         
         // Add searching visual feedback
         addSearchingClass();
@@ -766,7 +829,7 @@ function setWeatherBackground(description, mainWeather) {
     // Remove all existing weather classes
     body.className = body.className.replace(/weather-\w+/g, '').trim();
     
-    // Add weather-specific class for animations
+    // Add weather-specific class for background changes only
     if (lowerDesc.includes('clear') || lowerDesc.includes('sunny')) {
         body.classList.add('weather-sunny');
     } else if (lowerDesc.includes('rain') || lowerDesc.includes('drizzle')) {
@@ -784,7 +847,257 @@ function setWeatherBackground(description, mainWeather) {
     }
 }
 
-// Enhanced Live Weather Map with Real API Data
+//   Create Dynamic Weather Particles
+function createWeatherParticles(type) {
+    //  Remove existing particles
+    const existingParticles = document.querySelectorAll('.weather-particle');
+    existingParticles.forEach(particle => particle.remove());
+    
+    let particleCount = 15;
+    
+    if (type === 'rain') {
+        particleCount = 50;
+        createRainEffect();
+        return;
+    } else if (type === 'snow') {
+        particleCount = 30;
+        createSnowEffect();
+        return;
+    } else if (type === 'storm') {
+        particleCount = 25;
+        createStormEffect();
+        return;
+    } else if (type === 'cloud') {
+        createProfessionalCloudEffect();
+        return;
+    } else if (type === 'fog') {
+        createFogEffect();
+        return;
+    }
+    // Sun effect removed - no more sun visual on the right side
+}
+
+// CLOUD EFFECT - Replace emoji clouds
+function createProfessionalCloudEffect() {
+    const cloudContainer = document.createElement('div');
+    cloudContainer.className = 'cloud-effect-container';
+    cloudContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.3;
+    `;
+    
+    for (let i = 0; i < 5; i++) {
+        const cloud = document.createElement('div');
+        cloud.className = 'professional-cloud';
+        cloud.style.cssText = `
+            position: absolute;
+            background: radial-gradient(ellipse at center, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 40%, transparent 70%);
+            border-radius: 50%;
+            animation: cloudDrift ${20 + i * 5}s ease-in-out infinite;
+            width: ${150 + i * 30}px;
+            height: ${60 + i * 15}px;
+            top: ${10 + i * 15}%;
+            left: ${-20 - i * 10}%;
+        `;
+        cloudContainer.appendChild(cloud);
+    }
+    
+    document.body.appendChild(cloudContainer);
+    
+    setTimeout(() => {
+        if (cloudContainer.parentNode) {
+            cloudContainer.remove();
+        }
+    }, 30000);
+}
+
+//  SUN RAYS EFFECT
+function createSunRays() {
+    const sunContainer = document.createElement('div');
+    sunContainer.className = 'sun-effect-container';
+    sunContainer.style.cssText = `
+        position: fixed;
+        top: 10%;
+        right: 10%;
+        width: 200px;
+        height: 200px;
+        pointer-events: none;
+        z-index: 1;
+    `;
+    
+    // Create sun rays
+    for (let i = 0; i < 12; i++) {
+        const ray = document.createElement('div');
+        ray.className = 'sun-ray';
+        ray.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 100px;
+            background: linear-gradient(to bottom, rgba(255,223,0,0.8), transparent);
+            transform-origin: center top;
+            transform: translate(-50%, -50%) rotate(${i * 30}deg);
+            animation: rayPulse 3s ease-in-out infinite;
+            animation-delay: ${i * 0.2}s;
+        `;
+        sunContainer.appendChild(ray);
+    }
+    
+    // Create sun center
+    const sunCenter = document.createElement('div');
+    sunCenter.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 60px;
+        height: 60px;
+        background: radial-gradient(circle, #FFD700, #FFA500);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 60px rgba(255,223,0,0.8);
+        animation: sunGlow 2s ease-in-out infinite;
+    `;
+    sunContainer.appendChild(sunCenter);
+    
+    document.body.appendChild(sunContainer);
+    
+    setTimeout(() => {
+        if (sunContainer.parentNode) {
+            sunContainer.remove();
+        }
+    }, 10000);
+}
+
+function createRainEffect() {
+    for (let i = 0; i < 50; i++) {
+        setTimeout(() => {
+            const raindrop = document.createElement('div');
+            raindrop.className = 'weather-particle particle-rain';
+            raindrop.innerHTML = '💧';
+            raindrop.style.cssText = `
+                position: fixed;
+                left: ${Math.random() * 100}%;
+                top: -20px;
+                font-size: ${Math.random() * 8 + 8}px;
+                animation: rainFall 1s linear infinite;
+                animation-delay: ${Math.random() * 2}s;
+                pointer-events: none;
+                z-index: 1;
+            `;
+            document.body.appendChild(raindrop);
+            
+            setTimeout(() => {
+                if (raindrop.parentNode) {
+                    raindrop.remove();
+                }
+            }, 3000);
+        }, i * 50);
+    }
+}
+
+function createSnowEffect() {
+    for (let i = 0; i < 30; i++) {
+        setTimeout(() => {
+            const snowflake = document.createElement('div');
+            snowflake.className = 'weather-particle particle-snow';
+            snowflake.innerHTML = '❄️';
+            snowflake.style.cssText = `
+                position: fixed;
+                left: ${Math.random() * 100}%;
+                top: -20px;
+                font-size: ${Math.random() * 12 + 8}px;
+                animation: snowFall 3s linear infinite;
+                animation-delay: ${Math.random() * 3}s;
+                pointer-events: none;
+                z-index: 1;
+            `;
+            document.body.appendChild(snowflake);
+            
+            setTimeout(() => {
+                if (snowflake.parentNode) {
+                    snowflake.remove();
+                }
+            }, 6000);
+        }, i * 100);
+    }
+}
+
+function createStormEffect() {
+    // Lightning flashes
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+            const lightning = document.createElement('div');
+            lightning.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(255,255,255,0.8);
+                pointer-events: none;
+                z-index: 999;
+                animation: lightningFlash 0.2s ease-out;
+            `;
+            document.body.appendChild(lightning);
+            
+            setTimeout(() => {
+                if (lightning.parentNode) {
+                    lightning.remove();
+                }
+            }, 200);
+        }, i * 2000);
+    }
+    
+    // Rain
+    createRainEffect();
+}
+
+function createFogEffect() {
+    const fogContainer = document.createElement('div');
+    fogContainer.className = 'fog-effect-container';
+    fogContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.4;
+    `;
+    
+    for (let i = 0; i < 8; i++) {
+        const fogLayer = document.createElement('div');
+        fogLayer.style.cssText = `
+            position: absolute;
+            background: linear-gradient(90deg, transparent, rgba(220,220,220,0.6), transparent);
+            height: ${100 + i * 20}px;
+            width: 200%;
+            top: ${i * 12}%;
+            left: -100%;
+            animation: fogDrift ${15 + i * 3}s linear infinite;
+            animation-delay: ${i * 2}s;
+        `;
+        fogContainer.appendChild(fogLayer);
+    }
+    
+    document.body.appendChild(fogContainer);
+    
+    setTimeout(() => {
+        if (fogContainer.parentNode) {
+            fogContainer.remove();
+        }
+    }, 25000);
+}
+
+// Initialize weather map after page load
 function initializeWeatherMap() {
     const canvas = document.getElementById('weatherCanvas');
     if (!canvas) return;
@@ -792,224 +1105,61 @@ function initializeWeatherMap() {
     const ctx = canvas.getContext('2d');
     const mapLoading = document.querySelector('.map-loading');
     
+    // Hide loading text
+    if (mapLoading) {
+        mapLoading.style.display = 'none';
+    }
+    
     // Set canvas size
     canvas.width = canvas.offsetWidth;
     canvas.height = 400;
     
-    // Start with loading state
-    if (mapLoading) {
-        mapLoading.style.display = 'block';
-        mapLoading.textContent = 'Loading live weather data...';
-    }
-    
-    // Fetch real weather data and start animation
-    fetchLiveWeatherData().then(cities => {
-        if (mapLoading) {
-            mapLoading.style.display = 'none';
-        }
-        animateWeatherMap(ctx, canvas, cities);
-        
-        // Update weather data every 5 minutes
-        setInterval(async () => {
-            console.log('🔄 Updating live weather map data...');
-            const updatedCities = await fetchLiveWeatherData();
-            updateMapData(ctx, canvas, updatedCities);
-        }, 300000); // 5 minutes
-    }).catch(error => {
-        console.error('Error loading weather map:', error);
-        if (mapLoading) {
-            mapLoading.textContent = 'Error loading weather data. Showing demo...';
-        }
-        // Fallback to demo data
-        animateWeatherMap(ctx, canvas, getDemoCities());
-    });
+    // Start animation
+    animateWeatherMap(ctx, canvas);
 }
 
-// Fetch real weather data from OpenWeatherMap API
-async function fetchLiveWeatherData() {
-    const cityCoordinates = [
-        { name: 'New York', lat: 40.7128, lon: -74.0060, x: 0.25, y: 0.4 },
-        { name: 'London', lat: 51.5074, lon: -0.1278, x: 0.48, y: 0.3 },
-        { name: 'Tokyo', lat: 35.6762, lon: 139.6503, x: 0.85, y: 0.35 },
-        { name: 'Sydney', lat: -33.8688, lon: 151.2093, x: 0.9, y: 0.75 },
-        { name: 'Dubai', lat: 25.2048, lon: 55.2708, x: 0.6, y: 0.45 },
-        { name: 'Singapore', lat: 1.3521, lon: 103.8198, x: 0.75, y: 0.65 },
-        { name: 'Mumbai', lat: 19.0760, lon: 72.8777, x: 0.68, y: 0.5 },
-        { name: 'São Paulo', lat: -23.5505, lon: -46.6333, x: 0.35, y: 0.7 },
-        { name: 'Paris', lat: 48.8566, lon: 2.3522, x: 0.49, y: 0.32 },
-        { name: 'Moscow', lat: 55.7558, lon: 37.6173, x: 0.58, y: 0.25 },
-        { name: 'Beijing', lat: 39.9042, lon: 116.4074, x: 0.82, y: 0.38 },
-        { name: 'Cairo', lat: 30.0444, lon: 31.2357, x: 0.55, y: 0.48 },
-        { name: 'Toronto', lat: 43.6532, lon: -79.3832, x: 0.23, y: 0.38 },
-        { name: 'Mexico City', lat: 19.4326, lon: -99.1332, x: 0.18, y: 0.5 },
-        { name: 'Berlin', lat: 52.5200, lon: 13.4050, x: 0.51, y: 0.29 },
-        { name: 'Rome', lat: 41.9028, lon: 12.4964, x: 0.52, y: 0.4 },
-        { name: 'Madrid', lat: 40.4168, lon: -3.7038, x: 0.47, y: 0.37 },
-        { name: 'Bangkok', lat: 13.7563, lon: 100.5018, x: 0.78, y: 0.55 },
-        { name: 'Seoul', lat: 37.5665, lon: 126.9780, x: 0.84, y: 0.37 },
-        { name: 'Jakarta', lat: -6.2088, lon: 106.8456, x: 0.77, y: 0.62 }
+// Animate weather map with effects
+function animateWeatherMap(ctx, canvas) {
+    const cities = [
+        { name: 'New York', x: 0.25, y: 0.4, temp: 22, weather: 'sunny' },
+        { name: 'London', x: 0.48, y: 0.3, temp: 15, weather: 'cloudy' },
+        { name: 'Tokyo', x: 0.85, y: 0.35, temp: 18, weather: 'rainy' },
+        { name: 'Sydney', x: 0.9, y: 0.75, temp: 25, weather: 'sunny' },
+        { name: 'Dubai', x: 0.6, y: 0.45, temp: 35, weather: 'sunny' },
+        { name: 'Singapore', x: 0.75, y: 0.65, temp: 28, weather: 'stormy' },
+        { name: 'Mumbai', x: 0.68, y: 0.5, temp: 30, weather: 'cloudy' },
+        { name: 'São Paulo', x: 0.35, y: 0.7, temp: 20, weather: 'rainy' }
     ];
-    
-    const weatherPromises = cityCoordinates.map(async (city) => {
-        try {
-            const response = await fetch(
-                `https://api.openweathermap.org/data/2.5/weather?lat=${city.lat}&lon=${city.lon}&appid=${API_KEY}&units=metric`
-            );
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            return {
-                name: city.name,
-                x: city.x,
-                y: city.y,
-                temp: Math.round(data.main.temp),
-                weather: mapWeatherCondition(data.weather[0].main, data.weather[0].description),
-                country: data.sys.country,
-                humidity: data.main.humidity,
-                windSpeed: data.wind.speed,
-                description: data.weather[0].description,
-                lastUpdated: new Date().toLocaleTimeString()
-            };
-        } catch (error) {
-            console.error(`Error fetching weather for ${city.name}:`, error);
-            // Return demo data as fallback
-            return {
-                name: city.name,
-                x: city.x,
-                y: city.y,
-                temp: Math.round(Math.random() * 30 + 10),
-                weather: 'cloudy',
-                country: 'N/A',
-                humidity: 50,
-                windSpeed: 5,
-                description: 'Data unavailable',
-                lastUpdated: new Date().toLocaleTimeString()
-            };
-        }
-    });
-    
-    const cities = await Promise.all(weatherPromises);
-    console.log(`✅ Loaded live weather data for ${cities.length} cities`);
-    return cities;
-}
-
-// Map OpenWeatherMap conditions to our weather types
-function mapWeatherCondition(main, description) {
-    const lowerDesc = description.toLowerCase();
-    
-    if (main === 'Clear' || lowerDesc.includes('clear') || lowerDesc.includes('sunny')) {
-        return 'sunny';
-    } else if (main === 'Rain' || lowerDesc.includes('rain') || lowerDesc.includes('drizzle')) {
-        return 'rainy';
-    } else if (main === 'Clouds' || lowerDesc.includes('cloud')) {
-        return 'cloudy';
-    } else if (main === 'Thunderstorm' || lowerDesc.includes('thunder') || lowerDesc.includes('storm')) {
-        return 'stormy';
-    } else if (main === 'Snow' || lowerDesc.includes('snow')) {
-        return 'snowy';
-    } else if (main === 'Mist' || main === 'Fog' || lowerDesc.includes('mist') || lowerDesc.includes('fog')) {
-        return 'foggy';
-    }
-    
-    return 'cloudy'; // Default
-}
-
-// Fallback demo cities
-function getDemoCities() {
-    return [
-        { name: 'New York', x: 0.25, y: 0.4, temp: 22, weather: 'sunny', country: 'US' },
-        { name: 'London', x: 0.48, y: 0.3, temp: 15, weather: 'cloudy', country: 'UK' },
-        { name: 'Tokyo', x: 0.85, y: 0.35, temp: 18, weather: 'rainy', country: 'JP' },
-        { name: 'Sydney', x: 0.9, y: 0.75, temp: 25, weather: 'sunny', country: 'AU' },
-        { name: 'Dubai', x: 0.6, y: 0.45, temp: 35, weather: 'sunny', country: 'AE' }
-    ];
-}
-
-// Global variable to store current cities data
-let currentMapCities = [];
-
-// Enhanced Weather Map Animation with Real API Data
-function animateWeatherMap(ctx, canvas, cities) {
-    currentMapCities = cities; // Store for updates
     
     let time = 0;
-    let particles = [];
-    
-    // Create weather particles based on current conditions
-    function createParticles() {
-        particles = [];
-        const rainyCities = cities.filter(city => city.weather === 'rainy' || city.weather === 'stormy').length;
-        const snowyCities = cities.filter(city => city.weather === 'snowy').length;
-        const particleCount = Math.min(50, rainyCities * 10 + snowyCities * 8 + 20);
-        
-        for (let i = 0; i < particleCount; i++) {
-            particles.push({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: Math.random() * 0.5 + 0.1,
-                size: Math.random() * 2 + 1,
-                opacity: Math.random() * 0.5 + 0.2
-            });
-        }
-    }
-    
-    createParticles();
     
     function draw() {
-        // Clear canvas with gradient background
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, '#0f0f23');
-        gradient.addColorStop(1, '#1a1a2e');
-        ctx.fillStyle = gradient;
+        // Clear canvas
+        ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Draw subtle grid pattern
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        // Draw grid pattern
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 40) {
+        for (let i = 0; i < canvas.width; i += 50) {
             ctx.beginPath();
             ctx.moveTo(i, 0);
             ctx.lineTo(i, canvas.height);
             ctx.stroke();
         }
-        for (let i = 0; i < canvas.height; i += 40) {
+        for (let i = 0; i < canvas.height; i += 50) {
             ctx.beginPath();
             ctx.moveTo(0, i);
             ctx.lineTo(canvas.width, i);
             ctx.stroke();
         }
         
-        // Draw animated particles (rain/snow effect)
-        particles.forEach(particle => {
-            ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Update particle position
-            particle.x += particle.vx;
-            particle.y += particle.vy;
-            
-            // Reset particle if it goes off screen
-            if (particle.y > canvas.height) {
-                particle.y = -10;
-                particle.x = Math.random() * canvas.width;
-            }
-            if (particle.x < 0) particle.x = canvas.width;
-            if (particle.x > canvas.width) particle.x = 0;
-        });
-        
-        // Draw enhanced connections between cities
-        ctx.strokeStyle = 'rgba(102, 126, 234, 0.2)';
-        ctx.lineWidth = 1;
+        // Draw animated connections between cities
+        ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
+        ctx.lineWidth = 2;
         cities.forEach((city1, i) => {
             cities.forEach((city2, j) => {
-                if (i < j && Math.random() > 0.6) {
+                if (i < j && Math.random() > 0.7) {
                     const x1 = city1.x * canvas.width;
                     const y1 = city1.y * canvas.height;
                     const x2 = city2.x * canvas.width;
@@ -1018,147 +1168,83 @@ function animateWeatherMap(ctx, canvas, cities) {
                     ctx.beginPath();
                     ctx.moveTo(x1, y1);
                     
-                    // Create animated curved connection
-                    const cpx = (x1 + x2) / 2 + Math.sin(time * 0.001 + i) * 30;
-                    const cpy = (y1 + y2) / 2 + Math.cos(time * 0.001 + j) * 20;
+                    // Create curved connection
+                    const cpx = (x1 + x2) / 2 + Math.sin(time * 0.001 + i) * 50;
+                    const cpy = (y1 + y2) / 2 + Math.cos(time * 0.001 + j) * 30;
                     ctx.quadraticCurveTo(cpx, cpy, x2, y2);
                     
-                    // Animated dash effect
-                    ctx.setLineDash([3, 6]);
-                    ctx.lineDashOffset = -time * 0.03;
+                    // Animated dash
+                    ctx.setLineDash([5, 10]);
+                    ctx.lineDashOffset = -time * 0.05;
                     ctx.stroke();
                     ctx.setLineDash([]);
                 }
             });
         });
         
-        // Draw cities with enhanced effects
+        // Draw cities with weather effects
         cities.forEach((city, index) => {
             const x = city.x * canvas.width;
             const y = city.y * canvas.height;
             
-            // Enhanced pulsing effect
-            const pulseSize = 12 + Math.sin(time * 0.002 + index) * 4;
+            // Pulsing effect
+            const pulseSize = 15 + Math.sin(time * 0.003 + index) * 5;
             
-            // Weather-based colors with gradients
+            // Weather-based colors
             let color = '#FFD700'; // Default sunny
             if (city.weather === 'rainy') color = '#4A90E2';
             if (city.weather === 'cloudy') color = '#95A5A6';
             if (city.weather === 'stormy') color = '#E74C3C';
-            if (city.weather === 'snowy') color = '#87CEEB';
-            if (city.weather === 'foggy') color = '#BDC3C7';
             
-            // Draw outer glow with gradient
-            const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, pulseSize * 3);
-            glowGradient.addColorStop(0, color + '60');
-            glowGradient.addColorStop(0.5, color + '30');
-            glowGradient.addColorStop(1, 'transparent');
-            ctx.fillStyle = glowGradient;
-            ctx.fillRect(x - pulseSize * 3, y - pulseSize * 3, pulseSize * 6, pulseSize * 6);
+            // Draw outer glow
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseSize * 2);
+            gradient.addColorStop(0, color + '40');
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x - pulseSize * 2, y - pulseSize * 2, pulseSize * 4, pulseSize * 4);
             
-            // Draw city circle with gradient
-            const cityGradient = ctx.createRadialGradient(x, y, 0, x, y, pulseSize);
-            cityGradient.addColorStop(0, color);
-            cityGradient.addColorStop(1, color + 'CC');
-            
+            // Draw city circle
             ctx.beginPath();
             ctx.arc(x, y, pulseSize, 0, Math.PI * 2);
-            ctx.fillStyle = cityGradient;
+            ctx.fillStyle = color;
             ctx.fill();
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 2;
             ctx.stroke();
             
-            // Draw inner ring
-            ctx.beginPath();
-            ctx.arc(x, y, pulseSize * 0.6, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-            
-            // Draw city name with shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-            ctx.shadowBlur = 4;
-            ctx.shadowOffsetX = 1;
-            ctx.shadowOffsetY = 1;
+            // Draw city name
             ctx.fillStyle = 'white';
-            ctx.font = 'bold 11px Arial';
+            ctx.font = 'bold 12px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(city.name, x, y - pulseSize - 8);
-            ctx.shadowBlur = 0;
-            
-            // Draw country code
-            ctx.font = '9px Arial';
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-            ctx.fillText(city.country, x, y - pulseSize - 20);
+            ctx.fillText(city.name, x, y - pulseSize - 10);
             
             // Draw temperature
-            ctx.font = 'bold 10px Arial';
-            ctx.fillStyle = 'white';
-            ctx.fillText(`${city.temp}°C`, x, y + pulseSize + 12);
+            ctx.font = '10px Arial';
+            ctx.fillText(`${city.temp}°C`, x, y + pulseSize + 15);
             
             // Draw weather icon
-            const icons = { 
-                sunny: '☀️', 
-                rainy: '🌧️', 
-                cloudy: '☁️', 
-                stormy: '⛈️',
-                snowy: '❄️',
-                foggy: '🌫️'
-            };
-            ctx.font = '14px Arial';
-            ctx.fillText(icons[city.weather] || '🌤️', x, y + 4);
+            const icons = { sunny: '☀️', rainy: '🌧️', cloudy: '☁️', stormy: '⛈️' };
+            ctx.font = '16px Arial';
+            ctx.fillText(icons[city.weather] || '🌤️', x, y + 5);
         });
         
-        // Draw enhanced title with gradient
-        const titleGradient = ctx.createLinearGradient(20, 0, 300, 0);
-        titleGradient.addColorStop(0, '#667eea');
-        titleGradient.addColorStop(1, '#764ba2');
-        ctx.fillStyle = titleGradient;
-        ctx.font = 'bold 18px Arial';
+        // Draw title
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 16px Arial';
         ctx.textAlign = 'left';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 4;
-        ctx.fillText('🌍 Live Global Weather Network', 20, 35);
-        ctx.shadowBlur = 0;
+        ctx.fillText('Global Weather Intelligence Network', 20, 30);
         
-        // Draw subtitle
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.font = '12px Arial';
-        ctx.fillText('Real-time weather data from OpenWeatherMap API', 20, 52);
-        
-        // Draw enhanced live indicator
-        const liveX = canvas.width - 120;
-        const liveY = 35;
-        
-        // Pulsing live dot
-        const livePulse = 6 + Math.sin(time * 0.005) * 2;
-        const liveGradient = ctx.createRadialGradient(liveX, liveY, 0, liveX, liveY, livePulse);
-        liveGradient.addColorStop(0, '#2ECC71');
-        liveGradient.addColorStop(1, '#27AE60');
-        
+        // Draw live indicator
+        const liveX = canvas.width - 100;
+        const liveY = 30;
         ctx.beginPath();
-        ctx.arc(liveX, liveY, livePulse, 0, Math.PI * 2);
-        ctx.fillStyle = liveGradient;
-        ctx.fill();
-        
-        // Live text
+        ctx.arc(liveX, liveY, 5, 0, Math.PI * 2);
         ctx.fillStyle = '#2ECC71';
-        ctx.font = 'bold 12px Arial';
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('● LIVE', liveX + 12, liveY + 4);
-        
-        // Draw statistics
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${cities.length} Cities Tracked`, canvas.width - 20, canvas.height - 20);
-        ctx.fillText('Updated Every 5min', canvas.width - 20, canvas.height - 8);
-        
-        // Draw last update time
-        if (cities.length > 0 && cities[0].lastUpdated) {
-            ctx.fillText(`Last: ${cities[0].lastUpdated}`, canvas.width - 20, canvas.height - 32);
-        }
+        ctx.fillText('LIVE', liveX + 10, liveY + 4);
         
         time += 16;
         
@@ -1168,21 +1254,14 @@ function animateWeatherMap(ctx, canvas, cities) {
     draw();
 }
 
-// Update map with new data
-function updateMapData(ctx, canvas, newCities) {
-    currentMapCities = newCities;
-    console.log('🔄 Weather map updated with live data');
-    // The animation loop will automatically use the new data
-}
-
-// Initialize app when DOM is loaded
+// Initialize map when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     displayRecentSearches();
     
     // Initialize popular cities cache
     initializePopularCities();
     
-    // Initialize enhanced weather map after a short delay
+    // Initialize weather map after a short delay
     setTimeout(() => {
         initializeWeatherMap();
     }, 1000);

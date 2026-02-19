@@ -197,7 +197,7 @@ body.weather-foggy {
     left: 0;
     right: 0;
     max-height: 400px;
-    overflow-y: auto;
+    overflow-y: hidden;
     background: white;
     border-radius: 0 0 8px 8px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -207,23 +207,14 @@ body.weather-foggy {
     transition: all 0.3s ease;
 }
 
-/* Enhanced scrollbar for professional look */
+/* Remove scrollbar completely */
 .autocomplete-items::-webkit-scrollbar {
-    width: 8px;
+    display: none;
 }
 
-.autocomplete-items::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-
-.autocomplete-items::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 4px;
-}
-
-.autocomplete-items::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+.autocomplete-items {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
 }
 
 .autocomplete-items.enhanced {
