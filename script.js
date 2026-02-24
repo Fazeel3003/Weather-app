@@ -1,3 +1,16 @@
+let map;
+let markers = [];
+
+function initializeLiveWeatherMap() {
+    console.log("Initializing live weather map...");
+
+    map = L.map('map').setView([20, 0], 2);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+}
+
 // Constants
 const MAX_RECENT_SEARCHES = 5;
 const API_KEY = '9ff74386fc4529d7a1d8cf6f4a3e5062';
@@ -82,9 +95,10 @@ async function fetchPopularCities() {
         const responses = await Promise.all(requests);
 
         popularCitiesCache = responses
-            .filter(response => response && response.length > 0)
-            .map(response => response.data[0].name)
+            .filter(response => Array.isArray(response) && response.length > 0)
+            .map(response => response[0].name)
             .sort();
+
 
         // Cache the results
         localStorage.setItem('popularCitiesCache', JSON.stringify(popularCitiesCache));
@@ -546,6 +560,7 @@ function saveRecentSearch(city) {
 
     localStorage.setItem('recentWeatherSearches', JSON.stringify(recentSearches));
     displayRecentSearches();
+    renderLiveWeatherMap();
 }
 
 function displayRecentSearches() {
@@ -849,172 +864,164 @@ function setWeatherBackground(description, mainWeather) {
     }
 }
 
-// Initialize weather map after page load
-// function initializeWeatherMap() {
-//     const canvas = document.getElementById('weatherCanvas');
-//     if (!canvas) return;
-
-//     const ctx = canvas.getContext('2d');
-//     const mapLoading = document.querySelector('.map-loading');
-
-//     // Hide loading text
-//     if (mapLoading) {
-//         mapLoading.style.display = 'none';
-//     }
-
-//     // Set canvas size
-//     canvas.width = canvas.offsetWidth;
-//     canvas.height = 400;
-
-//     // Start animation
-//     animateWeatherMap(ctx, canvas);
-// }
-
-// Animate weather map with effects
-// function animateWeatherMap(ctx, canvas) {
-//     const cities = [
-//         { name: 'New York', x: 0.25, y: 0.4, temp: 22, weather: 'sunny' },
-//         { name: 'London', x: 0.48, y: 0.3, temp: 15, weather: 'cloudy' },
-//         { name: 'Tokyo', x: 0.85, y: 0.35, temp: 18, weather: 'rainy' },
-//         { name: 'Sydney', x: 0.9, y: 0.75, temp: 25, weather: 'sunny' },
-//         { name: 'Dubai', x: 0.6, y: 0.45, temp: 35, weather: 'sunny' },
-//         { name: 'Singapore', x: 0.75, y: 0.65, temp: 28, weather: 'stormy' },
-//         { name: 'Mumbai', x: 0.68, y: 0.5, temp: 30, weather: 'cloudy' },
-//         { name: 'São Paulo', x: 0.35, y: 0.7, temp: 20, weather: 'rainy' }
-//     ];
-
-//     let time = 0;
-
-//     function draw() {
-//         // Clear canvas
-//         ctx.fillStyle = '#1a1a2e';
-//         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-//         // Draw grid pattern
-//         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-//         ctx.lineWidth = 1;
-//         for (let i = 0; i < canvas.width; i += 50) {
-//             ctx.beginPath();
-//             ctx.moveTo(i, 0);
-//             ctx.lineTo(i, canvas.height);
-//             ctx.stroke();
-//         }
-//         for (let i = 0; i < canvas.height; i += 50) {
-//             ctx.beginPath();
-//             ctx.moveTo(0, i);
-//             ctx.lineTo(canvas.width, i);
-//             ctx.stroke();
-//         }
-
-//         // Draw animated connections between cities
-//         ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
-//         ctx.lineWidth = 2;
-//         cities.forEach((city1, i) => {
-//             cities.forEach((city2, j) => {
-//                 if (i < j && Math.random() > 0.7) {
-//                     const x1 = city1.x * canvas.width;
-//                     const y1 = city1.y * canvas.height;
-//                     const x2 = city2.x * canvas.width;
-//                     const y2 = city2.y * canvas.height;
-
-//                     ctx.beginPath();
-//                     ctx.moveTo(x1, y1);
-
-//                     // Create curved connection
-//                     const cpx = (x1 + x2) / 2 + Math.sin(time * 0.001 + i) * 50;
-//                     const cpy = (y1 + y2) / 2 + Math.cos(time * 0.001 + j) * 30;
-//                     ctx.quadraticCurveTo(cpx, cpy, x2, y2);
-
-//                     // Animated dash
-//                     ctx.setLineDash([5, 10]);
-//                     ctx.lineDashOffset = -time * 0.05;
-//                     ctx.stroke();
-//                     ctx.setLineDash([]);
-//                 }
-//             });
-//         });
-
-//         // Draw cities with weather effects
-//         cities.forEach((city, index) => {
-//             const x = city.x * canvas.width;
-//             const y = city.y * canvas.height;
-
-//             // Pulsing effect
-//             const pulseSize = 15 + Math.sin(time * 0.003 + index) * 5;
-
-//             // Weather-based colors
-//             let color = '#FFD700'; // Default sunny
-//             if (city.weather === 'rainy') color = '#4A90E2';
-//             if (city.weather === 'cloudy') color = '#95A5A6';
-//             if (city.weather === 'stormy') color = '#E74C3C';
-
-//             // Draw outer glow
-//             const gradient = ctx.createRadialGradient(x, y, 0, x, y, pulseSize * 2);
-//             gradient.addColorStop(0, color + '40');
-//             gradient.addColorStop(1, 'transparent');
-//             ctx.fillStyle = gradient;
-//             ctx.fillRect(x - pulseSize * 2, y - pulseSize * 2, pulseSize * 4, pulseSize * 4);
-
-//             // Draw city circle
-//             ctx.beginPath();
-//             ctx.arc(x, y, pulseSize, 0, Math.PI * 2);
-//             ctx.fillStyle = color;
-//             ctx.fill();
-//             ctx.strokeStyle = 'white';
-//             ctx.lineWidth = 2;
-//             ctx.stroke();
-
-//             // Draw city name
-//             ctx.fillStyle = 'white';
-//             ctx.font = 'bold 12px Arial';
-//             ctx.textAlign = 'center';
-//             ctx.fillText(city.name, x, y - pulseSize - 10);
-
-//             // Draw temperature
-//             ctx.font = '10px Arial';
-//             ctx.fillText(`${city.temp}°C`, x, y + pulseSize + 15);
-
-//             // Draw weather icon
-//             const icons = { sunny: '☀️', rainy: '🌧️', cloudy: '☁️', stormy: '⛈️' };
-//             ctx.font = '16px Arial';
-//             ctx.fillText(icons[city.weather] || '🌤️', x, y + 5);
-//         });
-
-//         // Draw title
-//         ctx.fillStyle = 'white';
-//         ctx.font = 'bold 16px Arial';
-//         ctx.textAlign = 'left';
-//         ctx.fillText('Global Weather Intelligence Network', 20, 30);
-
-//         // Draw live indicator
-//         const liveX = canvas.width - 100;
-//         const liveY = 30;
-//         ctx.beginPath();
-//         ctx.arc(liveX, liveY, 5, 0, Math.PI * 2);
-//         ctx.fillStyle = '#2ECC71';
-//         ctx.fill();
-//         ctx.fillStyle = 'white';
-//         ctx.font = '12px Arial';
-//         ctx.textAlign = 'left';
-//         ctx.fillText('LIVE', liveX + 10, liveY + 4);
-
-//         time += 16;
-
-//         requestAnimationFrame(draw);
-//     }
-
-//     draw();
-// }
 
 // Initialize map when DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
+
+    initializeLiveWeatherMap(); 
     displayRecentSearches();
-
-    // Initialize popular cities cache
     initializePopularCities();
-
-    // // Initialize weather map after a short delay
-    // setTimeout(() => {
-    //     initializeWeatherMap();
-    // }, 1000);
+    renderLiveWeatherMap();
 });
+
+//Users current location
+async function getUserCurrentLocation() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject("Geolocation not supported");
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                resolve({
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude
+                });
+            },
+            (error) => {
+                reject(error);
+            }
+        );
+    });
+}
+
+
+//Reverse geo-code to get city name
+async function getCityFromCoords(lat, lon) {
+    try {
+        const response = await fetch(
+            `https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${API_KEY}`
+        );
+
+        const data = await response.json();
+        return data[0]?.name || "Your Location";
+
+    } catch (error) {
+        console.error("Reverse geocode failed:", error);
+        return "Your Location";
+    }
+}
+
+
+async function fetchWeatherByCoords(lat, lon) {
+    try {
+        const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+        );
+
+        if (!response.ok) throw new Error("Weather fetch failed");
+
+        return await response.json();
+    } catch (error) {
+        console.error("Map weather error:", error);
+        return null;
+    }
+}
+
+
+function getTemperatureColor(temp) {
+    if (temp >= 35) return "#ef4444";
+    if (temp >= 25) return "#f97316";
+    if (temp >= 15) return "#22c55e";
+    return "#3b82f6";
+}
+
+
+async function renderLiveWeatherMap() {
+
+    // Clear existing markers
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+
+    let citiesToShow = [];
+
+    try {
+        
+        // 1️⃣ Get User Current Location
+        
+        const userPosition = await new Promise((resolve, reject) => {
+            if (!navigator.geolocation) reject();
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+        });
+
+        const userLat = userPosition.coords.latitude;
+        const userLon = userPosition.coords.longitude;
+
+        const weather = await fetchWeatherByCoords(userLat, userLon);
+
+        if (weather && weather.main) {
+            citiesToShow.push({
+                city: weather.name || "Your Location",
+                lat: userLat,
+                lon: userLon,
+                temp: Math.round(weather.main.temp),
+                description: weather.weather[0].main,
+                isUserLocation: true
+            });
+        }
+
+    } catch (err) {
+        console.warn("User location not available");
+    }
+
+    
+    // 2️⃣ Add Recent Searches
+    
+    const recentCities = getRecentSearches().slice(0, 5);
+
+    for (const city of recentCities) {
+        const coords = await getCityCoordinates(city);
+        if (!coords) continue;
+
+        const weather = await fetchWeatherByCoords(coords.lat, coords.lon);
+        if (!weather || !weather.main) continue;
+
+        citiesToShow.push({
+            city: coords.name,
+            lat: coords.lat,
+            lon: coords.lon,
+            temp: Math.round(weather.main.temp),
+            description: weather.weather[0].main,
+            isUserLocation: false
+        });
+    }
+
+
+    // 3️⃣ Render Markers
+
+    citiesToShow.forEach(data => {
+
+        const markerColor = getTemperatureColor(data.temp);
+
+        const marker = L.circleMarker([data.lat, data.lon], {
+            radius: data.isUserLocation ? 12 : 8,
+            fillColor: markerColor,
+            color: data.isUserLocation ? "#000000" : "#ffffff",
+            weight: 2,
+            fillOpacity: 0.9
+        }).addTo(map);
+
+        marker.bindPopup(`
+            <strong>${data.isUserLocation ? "📍 Your Location" : data.city}</strong><br>
+            🌡 ${data.temp}°C<br>
+            ${data.description}
+        `);
+
+        markers.push(marker);
+    });
+
+    if (markers.length > 0) {
+        const group = new L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.3));
+    }
+}
