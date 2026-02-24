@@ -139,6 +139,12 @@ body.weather-foggy {
 }
 
 /*  Live Weather Map Styles */
+#map {
+    height: 400px;
+    width: 100%;
+    border-radius: 12px;
+}
+
 .weather-map-section {
     background: white;
     border-radius: 12px;
