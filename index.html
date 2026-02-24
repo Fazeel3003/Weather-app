@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weather App</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
    
 </head>
 <body>
@@ -30,17 +33,18 @@
         <!-- Additional Metrics -->
         <div id="additionalMetrics" class="metrics-section"></div>
         
-        <!-- Live Weather Map
-        <div id="weatherMap" class="weather-map-section">
-            <h3>🌍 Live Weather Map</h3>
-            <div class="map-container">
-                <div class="map-placeholder">
-                    <div class="map-loading">Initializing live weather map...</div>
-                    <canvas id="weatherCanvas" width="800" height="400"></canvas>
-                </div>
-            </div>
+        <!<!-- Live Weather Map -->
+<div id="weatherMap" class="weather-map-section">
+    <h3>🌍 Live Weather Map</h3>
+    <div class="map-container">
+        <div class="map-placeholder">
+            <div class="map-loading"></div>
+            <div id="map"></div>
         </div>
-    </div> -->
+    </div>
+</div>
+
+    
     
     <script src="script.js"></script>
 </body>
