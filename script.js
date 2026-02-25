@@ -960,18 +960,26 @@ async function renderLiveWeatherMap() {
         const weather = await fetchWeatherByCoords(userLat, userLon);
 
         if (weather && weather.main) {
-            citiesToShow.push({
-                city: weather.name || "Your Location",
-                lat: userLat,
-                lon: userLon,
-                temp: Math.round(weather.main.temp),
-                description: weather.weather[0].main,
-                isUserLocation: true
-            });
-        }
+
+    const locality = weather.name; // e.g., Viman Nagar
+
+    // Proper reverse geocoding for main city
+    const mainCity = await getCityFromCoords(userLat, userLon);
+
+    citiesToShow.push({
+        city: mainCity,       // Tooltip (Pune)
+        locality: locality,   // Popup (Viman Nagar)
+        lat: userLat,
+        lon: userLon,
+        temp: Math.round(weather.main.temp),
+        description: weather.weather[0].main,
+        isUserLocation: true
+    });
+}
+
 
     } catch (err) {
-        console.warn("User location not available");
+    console.warn("User location error:", err);
     }
 
     
@@ -1003,19 +1011,57 @@ async function renderLiveWeatherMap() {
 
         const markerColor = getTemperatureColor(data.temp);
 
-        const marker = L.circleMarker([data.lat, data.lon], {
-            radius: data.isUserLocation ? 12 : 8,
-            fillColor: markerColor,
-            color: data.isUserLocation ? "#000000" : "#ffffff",
-            weight: 2,
-            fillOpacity: 0.9
-        }).addTo(map);
+        let marker;
 
-        marker.bindPopup(`
-            <strong>${data.isUserLocation ? "📍 Your Location" : data.city}</strong><br>
-            🌡 ${data.temp}°C<br>
-            ${data.description}
-        `);
+if (data.isUserLocation) {
+
+    const userIcon = L.divIcon({
+        className: "user-location-marker",
+        html: `<div class="pulse-marker"></div>`,
+        iconSize: [28, 28],
+        iconAnchor: [12, 12]
+    });
+
+    marker = L.marker([data.lat, data.lon], {
+        icon: userIcon,
+        zIndexOffset: 1000 // always on top
+    }).addTo(map);
+
+} else {
+
+    marker = L.circleMarker([data.lat, data.lon], {
+        radius: 8,
+        fillColor: markerColor,
+        color: "#ffffff",
+        weight: 1,
+        fillOpacity: 0.9
+    }).addTo(map);
+}
+
+
+       marker.bindPopup(`
+    <strong>
+        ${data.isUserLocation
+            ? `${data.locality}, ${data.city}`
+            : data.city}
+    </strong><br>
+    🌡 ${data.temp}°C<br>
+    ${data.description}
+`);
+
+
+        marker.bindTooltip(
+    `<div class="map-label">
+        <strong>${data.city}</strong><br>
+        ${data.temp}°C
+     </div>`,
+    {
+        permanent: true,
+        direction: "top",
+        offset: [0, -10],
+        className: "custom-tooltip"
+    }
+);
 
         markers.push(marker);
     });
@@ -1024,4 +1070,17 @@ async function renderLiveWeatherMap() {
         const group = new L.featureGroup(markers);
         map.fitBounds(group.getBounds().pad(0.3));
     }
+    map.on("zoomend", function () {
+    const currentZoom = map.getZoom();
+
+    markers.forEach(marker => {
+        if (marker.getTooltip()) {
+            if (currentZoom >= 4) {
+                marker.openTooltip();
+            } else {
+                marker.closeTooltip();
+            }
+        }
+    });
+});
 }
