@@ -12,12 +12,15 @@ A modern, responsive weather application with advanced search functionality, liv
 - **Debounced Search** - 400ms delay for optimal performance
 - **Visual Feedback** - Loading states and search indicators
 
-### 🗺️ **Live Weather Map**
-- **Animated Canvas Visualization** - Real-time weather data display
-- **Global City Coverage** - 8+ major cities with live weather
-- **Interactive Elements** - Pulsing city markers and animated connections
-- **Weather-based Colors** - Dynamic color coding for different conditions
-- **Live Status Indicator** - Real-time data updates
+### 🗺️ Interactive Live Weather Map
+- Built using Leaflet.js
+- Uses OpenStreetMap tiles
+- Shows current user location automatically
+- Displays 5 recent searched cities
+- Temperature-based colored markers
+- Always-visible tooltips
+- Auto-fit map bounds
+
 
 ### 📊 **Comprehensive Weather Data**
 - **Current Weather** - Temperature, feels-like, humidity, wind speed
