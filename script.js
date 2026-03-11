@@ -2,8 +2,6 @@ let map;
 let markers = [];
 
 function initializeLiveWeatherMap() {
-    console.log("Initializing live weather map...");
-
     map = L.map('map').setView([20, 0], 2);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -67,7 +65,6 @@ async function initializePopularCities() {
 
     if (cached && cacheTime && (Date.now() - parseInt(cacheTime)) < CACHE_DURATION) {
         popularCitiesCache = JSON.parse(cached);
-        console.log('✅ Loaded popular cities from cache');
         return;
     }
 
@@ -84,8 +81,6 @@ async function fetchPopularCities() {
     ];
 
     try {
-        console.log('🔄 Fetching popular cities ...');
-
         // Use Promise.all for parallel requests
         const requests = majorCities.map(city =>
            fetch(`${GEO_BASE_URL}/direct?q=${encodeURIComponent(city)}&limit=1&appid=${API_KEY}`)
@@ -104,8 +99,6 @@ async function fetchPopularCities() {
         localStorage.setItem('popularCitiesCache', JSON.stringify(popularCitiesCache));
         localStorage.setItem('popularCitiesCacheTime', Date.now().toString());
 
-        console.log(`✅ Fetched ${popularCitiesCache.length} popular cities`);
-
     } catch (error) {
         console.error('❌ Error fetching popular cities:', error.message);
         // Fallback to basic list
@@ -121,14 +114,11 @@ async function getCityCoordinates(cityQuery) {
     if (cityCache.has(cacheKey)) {
         const cached = cityCache.get(cacheKey);
         if (Date.now() - cached.timestamp < CACHE_DURATION) {
-            console.log(`✅ Using cached coordinates for ${cityQuery}`);
             return cached.data;
         }
     }
 
     try {
-        console.log(`🔍 Fetching coordinates for ${cityQuery}...`);
-
         const response = await fetch(
             `${GEO_BASE_URL}/direct?q=${encodeURIComponent(cityQuery)}&limit=1&appid=${API_KEY}`
         );
@@ -148,7 +138,6 @@ async function getCityCoordinates(cityQuery) {
                 timestamp: Date.now()
             });
 
-            console.log(`✅ Cached coordinates for ${cityQuery}`);
             return result;
         }
 
@@ -160,7 +149,9 @@ async function getCityCoordinates(cityQuery) {
     }
 }
 
-// city search with Axios with fetch and advanced features
+// WARNING: Current geocoding API provides limited results. Consider upgrading to a paid tier or using Mapbox Geocoding API for better accuracy.
+
+// Smart city search with proper debouncing, validation, and intelligent sorting
 async function searchCities(query) {
     if (!query || query.length < 2) return [];
 
@@ -168,88 +159,89 @@ async function searchCities(query) {
     searchState.currentQuery = query;
     searchState.isSearching = true;
 
-    // Check cache first
-    const cacheKey = `search_${query.toLowerCase()}`;
+    // Check cache first (5 minute TTL)
+    const cacheKey = `search_${query.trim().toLowerCase()}`;
+    const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
     if (cityCache.has(cacheKey)) {
         const cached = cityCache.get(cacheKey);
-        if (Date.now() - cached.timestamp < CACHE_DURATION) {
-            console.log(`✅ Using cached search results for "${query}"`);
+        if (Date.now() - cached.timestamp < CACHE_TTL) {
             searchState.isSearching = false;
-            return cached.data; // Return all cached cities as-is
+            return cached.data;
         }
     }
 
     // Cancel previous request if still pending
     if (searchController) {
         searchController.abort();
-        console.log('⏹️ Canceled previous search request');
     }
 
     // Create new AbortController for this request
     searchController = new AbortController();
 
     try {
-        console.log(`🔍 Searching cities for "${query}"...`);
+        // Use OpenWeatherMap Geocoding API with limit 10
+        const url = `${GEO_BASE_URL}/direct?q=${encodeURIComponent(query)}&limit=10&appid=${API_KEY}`;
+        const response = await fetch(url, { signal: searchController.signal });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
 
-       
-        const citiesData = await fetchGeocodingResults(query, AUTOCOMPLETE_LIMIT, searchController.signal);
+        const citiesData = await response.json();
+        
+        if (!Array.isArray(citiesData)) {
+            return [];
+        }
 
+        // Process and enhance results
         const results = citiesData
             .map(city => ({
-                name: city.name,
-                country: city.country,
-                state: city.state,
-                fullName: city.state ? `${city.name}, ${city.state}` : city.name,
-                // Create a unique key for duplicate detection
-                uniqueKey: `${city.name.toLowerCase()}_${city.country}`
+                name: city.name || '',
+                country: city.country || '',
+                state: city.state || '',
+                lat: city.lat || 0,
+                lon: city.lon || 0,
+                // Create display name: "City, State, Country"
+                displayName: city.state 
+                    ? `${city.name}, ${city.state}, ${city.country}`
+                    : `${city.name}, ${city.country}`,
+                // Create unique key for deduplication (name + country + rounded lat/lon)
+                uniqueKey: `${city.name.toLowerCase()}_${city.country.toLowerCase()}_${Math.round(city.lat * 100) / 100}_${Math.round(city.lon * 100) / 100}`
             }))
-            // Enhanced duplicate filtering
+            // Remove duplicates (same city in same country with similar coordinates)
             .filter((city, index, self) => {
-                // First, check exact duplicates (same name + same country)
-                const exactDuplicates = self.filter(c =>
-                    c.name.toLowerCase() === city.name.toLowerCase() &&
-                    c.country === city.country
-                );
-
-                // If multiple entries with same name and country, keep the first one
-                if (exactDuplicates.length > 1) {
-                    const firstIndex = self.findIndex(c =>
-                        c.name.toLowerCase() === city.name.toLowerCase() &&
-                        c.country === city.country
-                    );
-                    return index === firstIndex;
-                }
-
-                // If city name is same and countries are similar (like IN, ID, TL for Pune), 
-                // treat as duplicates and keep the one with IN (primary country)
-                const sameNameCities = self.filter(c =>
-                    c.name.toLowerCase() === city.name.toLowerCase()
-                );
-
-                if (sameNameCities.length > 1) {
-                    // For Pune, prefer IN (India) over other administrative codes
-                    if (city.name.toLowerCase() === 'pune') {
-                        const hasIN = sameNameCities.some(c => c.country === 'IN');
-                        if (hasIN) {
-                            return city.country === 'IN'; // Only keep Pune, IN
-                        }
-                    }
-
-                    // For other cities, prefer the first occurrence
-                    const firstSameNameIndex = self.findIndex(c =>
-                        c.name.toLowerCase() === city.name.toLowerCase()
-                    );
-                    return index === firstSameNameIndex;
-                }
-
-                return true; // Unique city, keep it
+                const duplicates = self.filter(c => c.uniqueKey === city.uniqueKey);
+                return duplicates.length === 1 && index === self.findIndex(c => c.uniqueKey === city.uniqueKey);
             })
-            .slice(0, AUTOCOMPLETE_LIMIT); // Show all cities up to our limit
+            // Smart sorting: exact match > starts with > contains > alphabetical
+            .sort((a, b) => {
+                const queryLower = query.toLowerCase();
+                const aNameLower = a.name.toLowerCase();
+                const bNameLower = b.name.toLowerCase();
+                
+                // Priority 1: Exact match
+                const aExact = aNameLower === queryLower;
+                const bExact = bNameLower === queryLower;
+                if (aExact && !bExact) return -1;
+                if (!aExact && bExact) return 1;
+                
+                // Priority 2: Starts with
+                const aStarts = aNameLower.startsWith(queryLower);
+                const bStarts = bNameLower.startsWith(queryLower);
+                if (aStarts && !bStarts) return -1;
+                if (!aStarts && bStarts) return 1;
+                
+                // Priority 3: Contains
+                const aContains = aNameLower.includes(queryLower);
+                const bContains = bNameLower.includes(queryLower);
+                if (aContains && !bContains) return -1;
+                if (!aContains && bContains) return 1;
+                
+                // Priority 4: Alphabetical
+                return a.name.localeCompare(b.name);
+            });
 
-        console.log(`🔍 API returned ${citiesData.length} cities for "${query}"`);
-        console.log(`🔍 Processed ${results.length} cities for display`);
-
-        // Cache the search results
+        // Cache the results
         cityCache.set(cacheKey, {
             data: results,
             timestamp: Date.now()
@@ -260,16 +252,12 @@ async function searchCities(query) {
         searchState.lastSearchTime = Date.now();
         searchState.searchHistory.add(query);
 
-        console.log(`✅ Found ${results.length} cities for "${query}"`);
         searchState.isSearching = false;
-
         return results;
 
     } catch (error) {
-        if (error.name === 'AbortError') {
-            console.log('⏹️ Search request was canceled');
-        } else {
-            console.error(`❌ City search error for "${query}":`, error.message);
+        if (error.name !== 'AbortError') {
+            console.error(`City search error for "${query}":`, error.message);
         }
         searchState.isSearching = false;
         return [];
@@ -281,12 +269,11 @@ async function searchCities(query) {
 // Autocomplete Variables
 let currentFocus = -1;
 
-//  Autocomplete with Enhanced UI 
+// Enhanced autocomplete with proper debouncing and validation
 function autocomplete(inp) {
     let currentFocus = -1;
     let searchTimeout;
     let isSearching = false;
-    let previousLength = 0; // Track previous input length
 
     // Add visual feedback for search state
     const addSearchingClass = () => {
@@ -301,29 +288,19 @@ function autocomplete(inp) {
 
     inp.addEventListener("input", async function (e) {
         const val = this.value.trim();
-        const currentLength = val.length;
 
         closeAllLists();
 
-        if (val.length < 3) {
+        // Require minimum 2 characters
+        if (val.length < 2) {
             removeSearchingClass();
-            previousLength = currentLength;
-            return false;
+            return;
         }
-
-        // Only search if characters were added (not backspace)
-        if (currentLength < previousLength) {
-            removeSearchingClass();
-            previousLength = currentLength;
-            return false;
-        }
-
-        previousLength = currentLength;
 
         // Add searching visual feedback
         addSearchingClass();
 
-        
+        // Debounce search with 400ms delay
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(async () => {
             try {
@@ -339,26 +316,23 @@ function autocomplete(inp) {
                 removeSearchingClass();
                 displaySearchError(inp, error.message);
             }
-        }, SEARCH_DEBOUNCE);
+        }, 400); // 400ms debounce
     });
 
     // Enhanced keyboard navigation
     inp.addEventListener("keydown", function (e) {
         let x = document.getElementById(this.id + "autocomplete-list");
         if (x) {
-            // Get only the actual city items, not header or other elements
             x = x.getElementsByClassName("autocomplete-item");
         }
 
         if (e.keyCode == 40) { // Down arrow
             e.preventDefault();
-            // Prevent input text selection during navigation
             this.setSelectionRange(this.value.length, this.value.length);
             currentFocus++;
             addActive(x);
         } else if (e.keyCode == 38) { // Up arrow
             e.preventDefault();
-            // Prevent input text selection during navigation
             this.setSelectionRange(this.value.length, this.value.length);
             currentFocus--;
             addActive(x);
@@ -388,12 +362,12 @@ function autocomplete(inp) {
         const header = document.createElement("DIV");
         header.className = "autocomplete-header";
         header.innerHTML = `
-            <span class="search-info">🔍 Found ${cities.length} cities</span>
+            <span class="search-info">Found ${cities.length} cities</span>
             <span class="search-tip">↑↓ Navigate • Enter Select</span>
         `;
         autocompleteList.appendChild(header);
 
-        // Add city results 
+        // Add city results with full display names
         cities.forEach((city, index) => {
             const item = document.createElement("DIV");
             item.className = "autocomplete-item";
@@ -404,12 +378,11 @@ function autocomplete(inp) {
                 match => `<strong class="highlight">${match}</strong>`
             );
 
-            const displayName = city.state ? `${city.name}, ${city.state}` : city.name;
-
+            // Display full name: "City, State, Country" or "City, Country"
             item.innerHTML = `
                 <div class="city-info">
                     <span class="city-name">${highlightedName}</span>
-                    <span class="city-country">${city.country}</span>
+                    <span class="city-location">${city.displayName}</span>
                 </div>
             `;
             item.innerHTML += `<input type='hidden' value='${city.name}'>`;
@@ -429,7 +402,6 @@ function autocomplete(inp) {
 
             // Enhanced hover effects with smooth transitions
             item.addEventListener("mouseenter", function () {
-                // Get current autocomplete items to remove active class
                 const currentItems = document.getElementsByClassName("autocomplete-item");
                 removeActive(currentItems);
                 this.classList.add("autocomplete-active");
@@ -450,7 +422,6 @@ function autocomplete(inp) {
 
     function displayNoResults(inp, query) {
         closeAllLists();
-
 
         const autocompleteList = document.createElement("DIV");
         autocompleteList.setAttribute("id", inp.id + "autocomplete-list");
@@ -979,7 +950,7 @@ async function renderLiveWeatherMap() {
 
 
     } catch (err) {
-    console.warn("User location error:", err);
+        console.error("User location error:", err);
     }
 
     
